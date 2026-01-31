@@ -1,0 +1,49 @@
+# Environment
+.env
+.env.*
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist/**
+out/
+out/**
+
+# Logs and output files
+*.log
+
+# IDE
+.vscode/
+*.code-workspace
+.idea/
+.agent/
+.agent/**
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Test artifacts and temporary files
+full_test_*.html
+test_*.html
+*_test.html
+*_test_results.*
+verify_*.js
+*.tmp
+*.temp
+
+# Debug and profiling
+*.cpuprofile
+*.heapsnapshot
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Coverage reports
+coverage/
+.nyc_output/
