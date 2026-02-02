@@ -4,16 +4,17 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 
-const CDP_PORT = 9004;
-const CDP_FLAG = `--remote-debugging-port=${CDP_PORT}`;
+const DEFAULT_CDP_PORT = 9004;
 
 /**
  * Robust cross-platform manager for IDE shortcuts and relaunching
  */
 class Relauncher {
-    constructor(logger = console.log) {
+    constructor(logger = console.log, port = DEFAULT_CDP_PORT) {
         this.platform = os.platform();
         this.logger = logger;
+        this.port = port;
+        this.cdpFlag = `--remote-debugging-port=${port}`;
     }
 
     log(msg) {
@@ -33,34 +34,31 @@ class Relauncher {
      * Main entry point: ensures CDP is enabled and relaunches if necessary
      */
     async ensureCDPAndRelaunch() {
-        this.log('Checking shortcut for CDP flag...');
+        this.log('Checking if CDP flag already present...');
         const hasFlag = await this.checkShortcutFlag();
 
         if (hasFlag) {
-            this.log('CDP flag already present in shortcut.');
+            this.log('CDP flag already present.');
             return { success: true, relaunched: false };
         }
 
+        // Best effort: try to modify shortcut for future launches
         this.log('CDP flag missing. Attempting to modify shortcut...');
         const modified = await this.modifyShortcut();
+        this.log(modified ? 'Shortcut modified.' : 'Shortcut modification failed (will use direct launch).');
 
-        if (modified) {
-            this.log('Shortcut modified successfully. Prompting for restart...');
-            const choice = await vscode.window.showInformationMessage(
-                'Multi Purpose requires a quick restart to enable automation. Restart now?',
-                'Restart', 'Later'
-            );
+        // Show restart prompt
+        const choice = await vscode.window.showInformationMessage(
+            'Multi Purpose requires a quick restart to enable automation. Restart now?',
+            'Restart', 'Later'
+        );
 
-            if (choice === 'Restart') {
-                await this.relaunch();
-                return { success: true, relaunched: true };
-            }
-        } else {
-            this.log('Failed to modify shortcut automatically.');
-            vscode.window.showErrorMessage(`Multi Purpose: Could not enable automation automatically. Please add ${CDP_FLAG} to your IDE shortcut manually.`);
+        if (choice === 'Restart') {
+            await this.relaunch();
+            return { success: true, relaunched: true };
         }
 
-        return { success: false, relaunched: false };
+        return { success: true, relaunched: false };
     }
 
     /**
@@ -70,7 +68,7 @@ class Relauncher {
         // Optimization: checking the process arguments of the current instance
         // This is the most reliable way to know if WE were launched with it
         const args = process.argv.join(' ');
-        return args.includes(CDP_FLAG);
+        return args.includes(this.cdpFlag);
     }
 
     /**
@@ -89,6 +87,7 @@ class Relauncher {
 
     async _modifyWindowsShortcut() {
         const ideName = this.getIdeName();
+        const port = this.port;
         const script = `
 $ErrorActionPreference = "SilentlyContinue"
 $WshShell = New-Object -ComObject WScript.Shell
@@ -101,8 +100,8 @@ $modified = $false
 foreach ($file in $Shortcuts) {
     try {
         $shortcut = $WshShell.CreateShortcut($file.FullName)
-        if ($shortcut.Arguments -notlike "*--remote-debugging-port=9004*") {
-            $shortcut.Arguments = "--remote-debugging-port=9004 " + $shortcut.Arguments
+        if ($shortcut.Arguments -notlike "*--remote-debugging-port=${port}*") {
+            $shortcut.Arguments = "--remote-debugging-port=${port} " + $shortcut.Arguments
             $shortcut.Save()
             $modified = $true
         }
@@ -122,7 +121,7 @@ if ($modified) { Write-Output "MODIFIED" } else { Write-Output "NO_CHANGE" }
         if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
 
         const appPath = this.getIdeName() === 'Code' ? '/Applications/Visual Studio Code.app' : `/Applications/${ideName}.app`;
-        const content = `#!/bin/bash\nopen -a "${appPath}" --args --remote-debugging-port=9004 "$@"`;
+        const content = `#!/bin/bash\nopen -a "${appPath}" --args --remote-debugging-port=${this.port} "$@"`;
 
         fs.writeFileSync(wrapperPath, content, { mode: 0o755 });
         this.log(`Created macOS wrapper at ${wrapperPath}`);
@@ -139,8 +138,8 @@ if ($modified) { Write-Output "MODIFIED" } else { Write-Output "NO_CHANGE" }
         for (const p of desktopPaths) {
             if (fs.existsSync(p)) {
                 let content = fs.readFileSync(p, 'utf8');
-                if (!content.includes('--remote-debugging-port=9004')) {
-                    content = content.replace(/^Exec=(.*)$/m, 'Exec=$1 --remote-debugging-port=9004');
+                if (!content.includes(`--remote-debugging-port=${this.port}`)) {
+                    content = content.replace(/^Exec=(.*)$/m, `Exec=$1 --remote-debugging-port=${this.port}`);
                     const userPath = path.join(os.homedir(), '.local', 'share', 'applications', path.basename(p));
                     fs.mkdirSync(path.dirname(userPath), { recursive: true });
                     fs.writeFileSync(userPath, content);
@@ -152,22 +151,26 @@ if ($modified) { Write-Output "MODIFIED" } else { Write-Output "NO_CHANGE" }
     }
 
     /**
-     * Relaunch the IDE using the modified shortcut/wrapper
+     * Relaunch the IDE with the CDP flag explicitly
      */
     async relaunch() {
         const folders = (vscode.workspace.workspaceFolders || []).map(f => `"${f.uri.fsPath}"`).join(' ');
 
         if (this.platform === 'win32') {
+            // Find the Antigravity executable path
             const ideName = this.getIdeName();
-            const cmd = `timeout /t 2 /nobreak >nul & start "" "${ideName}" ${folders}`;
+            // Use process.execPath to get the actual executable path (works for both installed and dev)
+            const exePath = process.execPath;
+            const cmd = `timeout /t 2 /nobreak >nul & "${exePath}" ${this.cdpFlag} ${folders}`;
+            this.log(`Relaunch command: ${cmd}`);
             spawn('cmd.exe', ['/c', cmd], { detached: true, stdio: 'ignore' }).unref();
         } else if (this.platform === 'darwin') {
             const ideName = this.getIdeName();
-            const wrapperPath = path.join(os.homedir(), '.local', 'bin', `${ideName.toLowerCase()}-cdp`);
-            const cmd = `sleep 2 && "${wrapperPath}" ${folders}`;
+            const appPath = ideName === 'Code' ? '/Applications/Visual Studio Code.app' : `/Applications/${ideName}.app`;
+            const cmd = `sleep 2 && open -a "${appPath}" --args ${this.cdpFlag} ${folders}`;
             spawn('sh', ['-c', cmd], { detached: true, stdio: 'ignore' }).unref();
         } else {
-            const cmd = `sleep 2 && ${this.getIdeName().toLowerCase()} --remote-debugging-port=9004 ${folders}`;
+            const cmd = `sleep 2 && ${this.getIdeName().toLowerCase()} ${this.cdpFlag} ${folders}`;
             spawn('sh', ['-c', cmd], { detached: true, stdio: 'ignore' }).unref();
         }
 

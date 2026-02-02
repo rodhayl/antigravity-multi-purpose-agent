@@ -208,6 +208,14 @@ class SettingsPanel {
                     case 'getDebugMode':
                         this.sendDebugMode();
                         break;
+                    case 'setCdpPort': {
+                        const cdpConfig = vscode.workspace.getConfiguration('auto-accept');
+                        await cdpConfig.update('cdpPort', message.value, vscode.ConfigurationTarget.Global);
+                        break;
+                    }
+                    case 'getCdpPort':
+                        this.sendCdpPort();
+                        break;
                     // === Debug UI Bridge for Testing ===
                     case 'debugUIAction':
                         this.handleDebugUIAction(message.action);
@@ -254,6 +262,14 @@ class SettingsPanel {
         this.panel.webview.postMessage({
             command: 'updateDebugMode',
             enabled: config.get('enabled', true)
+        });
+    }
+
+    sendCdpPort() {
+        const config = vscode.workspace.getConfiguration('auto-accept');
+        this.panel.webview.postMessage({
+            command: 'updateCdpPort',
+            port: config.get('cdpPort', 9004)
         });
     }
 
@@ -1105,6 +1121,19 @@ class SettingsPanel {
                 </div>
 
                 <div class="section">
+                    <div class="section-label">🔌 CDP Port</div>
+                    <div style="font-size: 13px; opacity: 0.6; margin-bottom: 16px; line-height: 1.5;">
+                        Chrome DevTools Protocol port for browser automation. Must match the --remote-debugging-port flag used when launching Antigravity.
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <input type="number" id="cdpPortInput" min="1024" max="65535" value="9004" 
+                               style="width: 100px; background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--fg); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 14px;">
+                        <button id="saveCdpPortBtn" class="btn-outline" style="padding: 8px 16px;">Save Port</button>
+                        <span id="cdpPortStatus" style="font-size: 12px; opacity: 0.6;"></span>
+                    </div>
+                </div>
+
+                <div class="section">
                     <div class="section-label">
                         <span>🔧 Debug Mode</span>
                         <span id="debugBadge" class="badge" style="background:#ef4444; font-size: 10px; padding: 2px 6px;">ACTIVE</span>
@@ -1193,6 +1222,28 @@ class SettingsPanel {
                 }
                 // Request initial debug mode state
                 vscode.postMessage({ command: 'getDebugMode' });
+
+                // CDP Port Configuration
+                const cdpPortInput = document.getElementById('cdpPortInput');
+                const saveCdpPortBtn = document.getElementById('saveCdpPortBtn');
+                const cdpPortStatus = document.getElementById('cdpPortStatus');
+                
+                if (saveCdpPortBtn && cdpPortInput) {
+                    saveCdpPortBtn.addEventListener('click', () => {
+                        const port = parseInt(cdpPortInput.value, 10);
+                        if (port >= 1024 && port <= 65535) {
+                            vscode.postMessage({ command: 'setCdpPort', value: port });
+                            cdpPortStatus.textContent = 'Saved! Restart required.';
+                            cdpPortStatus.style.color = '#34d399';
+                            setTimeout(() => { cdpPortStatus.textContent = ''; }, 3000);
+                        } else {
+                            cdpPortStatus.textContent = 'Invalid port (1024-65535)';
+                            cdpPortStatus.style.color = '#fb7185';
+                        }
+                    });
+                }
+                // Request initial CDP port value
+                vscode.postMessage({ command: 'getCdpPort' });
 
                 const bannedInput = document.getElementById('bannedCommandsInput');
                 const saveBannedBtn = document.getElementById('saveBannedBtn');
@@ -1619,6 +1670,11 @@ class SettingsPanel {
                         }
                         if (debugBadge) {
                             debugBadge.style.display = msg.enabled ? 'inline' : 'none';
+                        }
+                    }
+                    if (msg.command === 'updateCdpPort') {
+                        if (cdpPortInput) {
+                            cdpPortInput.value = msg.port;
                         }
                     }
                     if (msg.command === 'updateBannedCommands') {

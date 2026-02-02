@@ -2,7 +2,7 @@
     "name": "multi-purpose-agent",
     "displayName": "Multi Purpose Agent",
     "description": "Multi Purpose Agent: Automated Antigravity workflow.",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "publisher": "Rodhayl",
     "icon": "media/icon.png",
     "repository": {
@@ -137,6 +137,13 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Automatically send 'Continue' to the chat when quota refreshes or job is paused."
+                },
+                "auto-accept.cdpPort": {
+                    "type": "number",
+                    "default": 9004,
+                    "minimum": 1024,
+                    "maximum": 65535,
+                    "description": "The Chrome DevTools Protocol port used for browser automation. Must match the --remote-debugging-port flag used when launching Antigravity."
                 },
                 "auto-accept.debugMode.enabled": {
                     "type": "boolean",

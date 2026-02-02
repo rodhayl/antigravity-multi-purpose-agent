@@ -36,7 +36,9 @@ function getAntigravityClient() {
 const GLOBAL_STATE_KEY = 'auto-accept-enabled-global';
 const FREQ_STATE_KEY = 'auto-accept-frequency';
 const BANNED_COMMANDS_KEY = 'auto-accept-banned-commands';
-const ROI_STATS_KEY = 'auto-accept-roi-stats'; // For ROI notification
+const ROI_STATS_KEY = 'auto-accept-roi-stats';
+const CDP_SETUP_COMPLETED_KEY = 'cdp-setup-completed';
+const EXTENSION_VERSION_KEY = 'extension-version'; // Track version to detect reinstall
 const SECONDS_PER_CLICK = 5; // Conservative estimate: 5 seconds saved per auto-accept
 
 let isEnabled = false;
@@ -58,6 +60,9 @@ let globalContext;
 let cdpHandler;
 let relauncher;
 let debugHandler; // Debug Handler instance
+let configuredCdpPort = 9004; // Configurable CDP port from settings
+let cdpPopupShownThisSession = false; // Track if popup was shown this session
+let relaunchAttemptedThisSession = false; // Track if relaunch was attempted
 
 const extensionRoot = path.basename(__dirname).toLowerCase() === 'dist'
     ? path.join(__dirname, '..')
@@ -722,6 +727,38 @@ function detectIDE() {
     return 'Code'; // VS Code base
 }
 
+/**
+ * Show a one-time popup with instructions for launching with remote debugging port
+ * Only shows once per session after relaunch has been attempted
+ */
+async function showCDPConnectionPopup() {
+    if (cdpPopupShownThisSession) return;
+    if (!relaunchAttemptedThisSession) return; // Only show after relaunch was attempted
+
+    cdpPopupShownThisSession = true;
+
+    const osModule = require('os');
+    const platform = osModule.platform();
+    const port = configuredCdpPort;
+
+    let exampleCmd;
+    if (platform === 'win32') {
+        exampleCmd = `"C:\\Users\\USER\\AppData\\Local\\Programs\\Antigravity\\Antigravity.exe" --remote-debugging-port=${port}`;
+    } else if (platform === 'darwin') {
+        exampleCmd = `open -a "Antigravity" --args --remote-debugging-port=${port}`;
+    } else {
+        exampleCmd = `antigravity --remote-debugging-port=${port}`;
+    }
+
+    log(`CDP connection failed. Showing one-time popup with launch instructions.`);
+
+    await vscode.window.showWarningMessage(
+        `Multi Purpose Agent could not connect to CDP port ${port}. Please launch Antigravity with the remote debugging flag:\n\n${exampleCmd}`,
+        { modal: true },
+        'OK'
+    );
+}
+
 async function activate(context) {
     globalContext = context;
     console.log('Multi Purpose Extension: Activator called.');
@@ -810,19 +847,23 @@ async function activate(context) {
             }
         });
 
-        // 3. Initialize Handlers (Lazy Load) - \u{1F916}h IDEs use CDP now
+        // 3. Initialize Handlers (Lazy Load) - 🤖h IDEs use CDP now
         try {
             const { CDPHandler } = require('./cdp-handler');
             const { Relauncher } = require('./relauncher');
 
-            cdpHandler = new CDPHandler(log);
-            relauncher = new Relauncher(log);
+            // Read configured CDP port from settings
+            configuredCdpPort = vscode.workspace.getConfiguration('auto-accept').get('cdpPort', 9004);
+            log(`Configured CDP port: ${configuredCdpPort}`);
+
+            cdpHandler = new CDPHandler(log, configuredCdpPort);
+            relauncher = new Relauncher(log, configuredCdpPort);
             log(`CDP handlers initialized for ${currentIDE}.`);
 
 
 
             // CRITICAL: Start CDP connections immediately to establish browser communication
-            // This connects to the fixed CDP port 9004 and injects the browser script
+            // This connects to the configured CDP port and injects the browser script
             const workspaceFolders = vscode.workspace.workspaceFolders;
             const detectedWorkspace = workspaceFolders && workspaceFolders.length > 0
                 ? workspaceFolders[0].name
@@ -832,7 +873,8 @@ async function activate(context) {
                 ide: currentIDE,
                 bannedCommands: context.globalState.get(BANNED_COMMANDS_KEY, []),
                 pollInterval: context.globalState.get(FREQ_STATE_KEY, 1000),
-                workspaceName: detectedWorkspace
+                workspaceName: detectedWorkspace,
+                port: configuredCdpPort
             };
             cdpHandler.start(cdpConfig).then(() => {
                 log(`CDP connections established. Active connections: ${cdpHandler.getConnectionCount()}`);
@@ -1073,7 +1115,7 @@ async function ensureCDPOrPrompt(showPrompt = false) {
         log('CDP is active and available.');
         return true;
     } else {
-        log('CDP not found on port 9004.');
+        log(`CDP not found on port ${configuredCdpPort}.`);
         if (showPrompt && relauncher) {
             log('Initiating CDP setup and relaunch flow...');
             await relauncher.ensureCDPAndRelaunch();
@@ -1083,18 +1125,54 @@ async function ensureCDPOrPrompt(showPrompt = false) {
 }
 
 async function checkEnvironmentAndStart() {
+    const vscode = require('vscode');
+    const currentVersion = vscode.extensions.getExtension('Rodhayl.multi-purpose-agent')?.packageJSON?.version || '0.0.0';
+    const storedVersion = globalContext.globalState.get(EXTENSION_VERSION_KEY, null);
+
+    // Detect fresh install or reinstall (version changed)
+    const isNewInstall = storedVersion === null;
+    const isReinstall = storedVersion !== null && storedVersion !== currentVersion;
+
+    if (isNewInstall || isReinstall) {
+        log(`${isReinstall ? 'Reinstall' : 'New install'} detected (${storedVersion} → ${currentVersion}). Resetting CDP setup state.`);
+        await globalContext.globalState.update(CDP_SETUP_COMPLETED_KEY, false);
+        await globalContext.globalState.update(EXTENSION_VERSION_KEY, currentVersion);
+    }
+
+    const cdpSetupCompleted = globalContext.globalState.get(CDP_SETUP_COMPLETED_KEY, false);
+    const cdpAvailable = cdpHandler ? await cdpHandler.isCDPAvailable() : false;
+
+    // First install or reinstall: CDP not set up yet, prompt for restart
+    if (!cdpSetupCompleted && !cdpAvailable && relauncher) {
+        log('CDP not available, showing restart prompt...');
+        await relauncher.ensureCDPAndRelaunch();
+        await globalContext.globalState.update(CDP_SETUP_COMPLETED_KEY, true);
+        updateStatusBar();
+        return;
+    }
+
+    // Restart was done but CDP still not available (wrong port) - show error popup
+    if (cdpSetupCompleted && !cdpAvailable) {
+        log('Restart was done but CDP still not available. Showing port error popup...');
+        relaunchAttemptedThisSession = true;
+        await showCDPConnectionPopup();
+    }
+
+    // Mark setup complete if CDP is already working
+    if (!cdpSetupCompleted && cdpAvailable) {
+        log('CDP already available, marking setup complete.');
+        await globalContext.globalState.update(CDP_SETUP_COMPLETED_KEY, true);
+    }
+
+    // Normal startup: if extension was enabled, try to restore state
     if (isEnabled) {
         log('Initializing Multi Purpose environment...');
-        const cdpReady = await ensureCDPOrPrompt(false);
-
-        if (!cdpReady) {
-            // CDP not available - reset to OFF state so user can trigger setup via toggle
-            log('Multi Purpose was enabled but CDP is not available. Resetting to OFF state.');
+        if (!cdpAvailable) {
+            log('Multi Purpose was enabled but CDP not available. Resetting to OFF.');
             isEnabled = false;
             await globalContext.globalState.update(GLOBAL_STATE_KEY, false);
         } else {
             await startPolling();
-            // Start stats collection if already enabled on startup
             startStatsCollection(globalContext);
         }
     }
@@ -1112,7 +1190,14 @@ async function handleToggle(context) {
         // If trying to enable but CDP not available, prompt for relaunch (don't change state)
         if (!isEnabled && !cdpAvailable && relauncher) {
             log('Multi Purpose: CDP not available. Prompting for setup/relaunch.');
-            await relauncher.ensureCDPAndRelaunch();
+            const result = await relauncher.ensureCDPAndRelaunch();
+            relaunchAttemptedThisSession = true;
+
+            // If relaunch was not chosen (user clicked "Later" or modification failed), 
+            // show the one-time popup with manual launch instructions
+            if (!result.relaunched) {
+                await showCDPConnectionPopup();
+            }
             return; // Don't change state - toggle stays OFF
         }
 
@@ -1815,16 +1900,45 @@ function stopDebugServer() {
     }
 }
 
-function deactivate() {
+async function deactivate() {
     stopPolling();
     stopQuotaPolling();
-    stopDebugServer(); // Ensure server is stopped
+    stopDebugServer();
     if (cdpHandler) {
         cdpHandler.stop();
     }
     if (antigravityClient) {
         antigravityClient.disconnect();
         antigravityClient = null;
+    }
+
+    // Cleanup: Clear all extension state (for uninstall)
+    if (globalContext) {
+        try {
+            await globalContext.globalState.update(GLOBAL_STATE_KEY, undefined);
+            await globalContext.globalState.update(FREQ_STATE_KEY, undefined);
+            await globalContext.globalState.update(BANNED_COMMANDS_KEY, undefined);
+            await globalContext.globalState.update(ROI_STATS_KEY, undefined);
+            await globalContext.globalState.update(CDP_SETUP_COMPLETED_KEY, undefined);
+            await globalContext.globalState.update(EXTENSION_VERSION_KEY, undefined);
+        } catch (e) {
+            // Ignore cleanup errors
+        }
+    }
+
+    // Cleanup: Remove log files
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        const logPattern = /^multi-purpose-cdp-.*\.log$/;
+        const files = fs.readdirSync(extensionRoot);
+        for (const file of files) {
+            if (logPattern.test(file)) {
+                fs.unlinkSync(path.join(extensionRoot, file));
+            }
+        }
+    } catch (e) {
+        // Ignore cleanup errors
     }
 }
 

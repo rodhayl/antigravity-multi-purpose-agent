@@ -3,11 +3,12 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const BASE_PORT = 9004;
+const DEFAULT_CDP_PORT = 9004;
 
 class CDPHandler {
-    constructor(logger = console.log) {
+    constructor(logger = console.log, port = DEFAULT_CDP_PORT) {
         this.logger = logger;
+        this.port = port;
         this.connections = new Map(); // port:pageId -> {ws, injected}
         this.isEnabled = false;
         this.msgId = 1;
@@ -18,11 +19,11 @@ class CDPHandler {
     }
 
     /**
-     * Check if the fixed CDP port is active
+     * Check if the configured CDP port is active
      */
     async isCDPAvailable() {
         try {
-            const pages = await this._getPages(BASE_PORT);
+            const pages = await this._getPages(this.port);
             return pages.length > 0;
         } catch (e) {
             return false;
@@ -34,16 +35,17 @@ class CDPHandler {
      */
     async start(config) {
         this.isEnabled = true;
+        if (config.port) this.port = config.port;
         this.workspaceName = config.workspaceName || null; // Store for later use in sendPrompt
-        this.log(`Connecting to CDP on port ${BASE_PORT}...`);
+        this.log(`Connecting to CDP on port ${this.port}...`);
         if (this.workspaceName) {
             this.log(`Current workspace: ${this.workspaceName}`);
         }
 
         try {
-            const pages = await this._getPages(BASE_PORT);
+            const pages = await this._getPages(this.port);
             for (const page of pages) {
-                const id = `${BASE_PORT}:${page.id}`;
+                const id = `${this.port}:${page.id}`;
                 if (!this.connections.has(id)) {
                     await this._connect(id, page.webSocketDebuggerUrl);
                 }
