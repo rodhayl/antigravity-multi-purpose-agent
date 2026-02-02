@@ -1,150 +1,95 @@
-# Multi Purpose Agent for Antigravity
+<div align="center">
+  <img src="media/icon.png" width="128" alt="Multi Purpose Agent Icon" />
+  <h1>Antigravity Multi-Purpose Agent</h1>
+  <p>
+    <strong>Automate your Antigravity workflow. Zero babysitting required.</strong>
+  </p>
 
-## Keep your Antigravity workflow moving. Zero babysitting.
-
-Stop watching approvals. Multi Purpose Agent keeps your Antigravity conversation moving — accepting file edits, terminal commands, and recovery prompts automatically.
-
----
-
-## Why Multi Purpose Agent?
-
-Antigravity's multi-agent workflow is powerful, but it stops every time the agent needs approval. 
-
-**That's dozens of interruptions per hour.**
-
-Multi Purpose Agent eliminates the wait:
-- ✅ **File edits** — Auto-applied
-- ✅ **Terminal commands** — Auto-executed
-- ✅ **Retry prompts** — Auto-confirmed
-- ✅ **Stuck agents** — Auto-recovered
+  [![Version](https://img.shields.io/open-vsx/v/Rodhayl/multi-purpose-agent)](https://open-vsx.org/extension/Rodhayl/multi-purpose-agent)
+  [![Downloads](https://img.shields.io/open-vsx/dt/Rodhayl/multi-purpose-agent)](https://open-vsx.org/extension/Rodhayl/multi-purpose-agent)
+  [![License](https://img.shields.io/github/license/rodhayl/antigravity-multi-purpose-agent)](LICENSE)
+</div>
 
 ---
 
-## Features
+## ⚡ Unchain Your AI
 
-### Prompt Queue
-Automate sequences of tasks with the built-in prompt scheduler:
-- **Queue Mode** — Run tasks sequentially, advancing on silence detection
-- **Interval Mode** — Send prompts on a schedule
-- **Check Prompts** — Verify each task is fully implemented before moving on
+You didn't install an AI agent to sit there and click "Approve" 50 times an hour. **Antigravity Multi-Purpose Agent** handles the boring stuff so you can focus on the architecture.
 
-### Antigravity Quota Monitor
-Real-time quota tracking in the status bar:
-- View remaining credits and usage percentage
-- Time until quota reset
-- Automatic pause/resume when quota is exhausted
+> **The Problem**: Antigravity is powerful, but constant permission prompts break your flow.
+>
+> **The Solution**: This agent acts as your executive allow-list, auto-approving files and commands while you stay in the driver's seat.
 
-### Dangerous Command Blocking
-Built-in protection against destructive commands like `rm -rf /`. Customize the blocklist with patterns or regex.
-
-### Impact Dashboard
-Track your productivity gains:
-- Clicks saved this week
-- Time saved
-- Sessions run
-- Commands blocked
+### 🚀 What It Does
+*   ✅ **Auto-Edit**: File changes are applied instantly.
+*   ✅ **Auto-Run**: Safe terminal commands execute immediately.
+*   ✅ **Auto-Retry**: "Please try again" prompts are automatically confirmed.
+*   ✅ **Auto-Recover**: Detects when the agent gets stuck and nudges it back to life.
 
 ---
 
-## Quick Start
+## 🛠️ Power Features
 
-1. **Install** the extension
-2. **Relaunch** when prompted (one-click)
-3. **Done** — Multi Purpose Agent activates automatically
+### 📅 The Prompt Queue
+Don't wait for one task to finish before typing the next. Queue them up!
+*   **Queue Mode**: Stack tasks like a playlist. The agent runs them one by one.
+*   **Interval Mode**: Keep your agent awake with periodic prompts (perfect for long background sessions).
+*   **Verification**: Automatically enforce a "Check your work" step between tasks.
 
-The extension runs silently. Check the status bar for `Multi Purpose: ON`.
+### 💳 Quota Monitor
+Stop guessing when you'll hit the limit.
+*   **Real-time Tracking**: View model quotas and credits directly in the status bar.
+*   **Smart Pause**: Automatically pauses the queue when you're out of credits.
+*   **Auto Resume**: Kicks back into gear the moment your quota resets.
 
----
-
-## Features Overview
-
-| Feature | Description |
-|---------|-------------|
-| Auto-accept in active tab | Click Accept/Run/Retry automatically |
-| Prompt Queue | Schedule and automate task sequences |
-| Quota Monitor | Track Antigravity credits in status bar |
-| Custom banned commands | Block dangerous patterns with regex support |
-| Adjustable polling speed | Balance responsiveness and CPU usage |
-| Impact Dashboard | Track clicks saved and time recovered |
+### 🛡️ Safety Guardrails
+Automation shouldn't mean danger.
+*   **Regex Blocklist**: Prevent destructive commands (like `rm -rf`) from ever running.
+*   **Impact Dashboard**: Track exactly how many clicks and how much time you've saved.
 
 ---
 
-## Technical Documentation
+## 🏁 Quick Start
 
-📖 **[Workflows & architecture →](docs/WORKFLOW.md)**
-
-### How Prompt Queue Sends Messages
-
-The Prompt Queue uses **Chrome DevTools Protocol (CDP)** to inject messages directly into the Antigravity chat panel. This works because:
-
-1. **Standard VS Code APIs don't work** — Commands like `workbench.action.chat.open` target Copilot, not Antigravity
-2. **Antigravity renders its chat in a webview** — Accessible via CDP WebSocket connections
-3. **We target the correct DOM element** — A `contenteditable` div, NOT the IME overlay
-
-The implementation:
-- Finds the chat input (`contenteditable` with `cursor-text` class)
-- Sets text via `document.execCommand('insertText')`
-- Submits via Enter key event
-
-📖 **[Full implementation details →](docs/SEND_MESSAGE_ANTIGRAVITY_TO_AGENT_CHAT.md)**
-
-### Live CDP Debugging
-
-For developers working on browser-side features, the extension provides Live CDP Debugging - the ability to execute arbitrary JavaScript in the Antigravity webview without rebuilding the extension.
-
-Key capabilities:
-- **`evaluateInBrowser`** - Run JavaScript via CDP
-- **`getCDPConnections`** - List active connections
-- **DOM exploration** - Find and test element selectors
-- **Rapid iteration** - No rebuild required
-
-📖 **[Live CDP debugging guide →](docs/LIVE_CDP_DEBUGGING.md)**
-
-### Debug Testing Infrastructure
-
-For comprehensive automated testing, the extension provides a Debug Server (port 54321) that enables:
-
-- **Full state inspection** — Query all settings, stats, and queue status
-- **Programmatic control** — Toggle features, update settings, control queue
-- **Browser automation** — Execute JavaScript in Antigravity via CDP
-- **Settings Panel UI automation** — Click buttons, toggle switches, read values
-- **Comprehensive test suite** — 52+ automated tests covering all functionality
-
-Run the test suite:
-```bash
-node tests/comprehensive_test.js
-```
-
-📖 **[Debug testing documentation →](docs/DEBUG_TESTING.md)**
+1.  **Install** the extension.
+2.  **Relaunch** Antigravity when prompted (we handle the flags).
+3.  **Done**. You'll see `Multi Purpose: ON` in your status bar.
 
 ---
 
-## Requirements
+## 📚 Documentation & Debugging
 
-- Antigravity IDE
-- Antigravity launched with `--remote-debugging-port=9004`
-- One-time relaunch after install (adds the flag automatically)
+For those who want to see how the magic happens:
 
-**Important:** The extension connects to **port 9004 only** for CDP and will not scan other ports.
-
-## Logs
-
-- CDP/debug logs are written to `multi-purpose-cdp-<MMHH-DDMMYY>.log` in the extension folder.
-- Debug actions like `getLogs`, `clearLogs`, and `openLogFile` operate on the latest `multi-purpose-cdp-*.log` by file modification time.
+*   **[Architecture Deep Dive](docs/WORKFLOW.md)**: Understanding the workflow.
+*   **[Messaging Protocol](docs/SEND_MESSAGE_ANTIGRAVITY_TO_AGENT_CHAT.md)**: How we speak to the webview via CDP.
+*   **[Live Debugging](docs/LIVE_CDP_DEBUGGING.md)**: Inject JavaScript directly into the agent.
+*   **[Test Suite](docs/DEBUG_TESTING.md)**: Run the 52+ automated tests.
 
 ---
 
-## Credits & Thanks
+## ⚙️ Configuration At A Glance
 
-This extension was created by building on and expanding work from these projects:
-
-- Auto Accept Agent (Auto Accept for Antigravity): https://github.com/Munkhin/auto-accept-agent (includes background agent + tab rotation, which we removed in this extension)
-- Antigravity Quota Watcher: https://github.com/Henrik-3/AntigravityQuota
-
-Huge thanks to the developers of both extensions. If you want a lighter-weight or alternative approach, check out the original projects above.
+| Feature | Setting Key | Description |
+| :--- | :--- | :--- |
+| **Schedule Mode** | `auto-accept.schedule.mode` | `interval`, `daily`, or `queue` |
+| **Silence Timeout** | `auto-accept.schedule.silenceTimeout` | Seconds to wait before assuming a task is done |
+| **Quota Poll** | `auto-accept.antigravityQuota.pollInterval` | How often to refresh credit status |
+| **CDP Port** | `auto-accept.cdpPort` | Defaults to `9004`. Must match launch args. |
 
 ---
 
-## License
+## Tech Stack & Credits
+
+This project was built by **Rodhayl**, integrating and refining the best concepts from the community:
+
+*   Based on **[Auto Accept Agent](https://github.com/Munkhin/auto-accept-agent)**
+*   Incorporating **[Antigravity Quota Watcher](https://github.com/Henrik-3/AntigravityQuota)**
+
+*A unified, streamlined experience for power users.*
+
+---
+
+## 📄 License
 
 MIT
